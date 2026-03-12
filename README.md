@@ -21,7 +21,6 @@ Fixed crashes caused by deprecated aliases. All instances of `np.float`, `np.int
 
 ### 3. Transformers API Updates
 * Updated `get_bert_embedding` to interface directly with `last_hidden_state`.
-* Replaced deprecated `tokenizer.max_len` with `tokenizer.model_max_length` including safe fallback logic.
 * Implemented a lazy-loading singleton pattern for the model and tokenizer to optimize memory usage and avoid import-time initialization failures.
 
 ### 4. Robustness and Logging
