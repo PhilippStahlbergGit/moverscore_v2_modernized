@@ -9,7 +9,6 @@ Vendoring rationale:
 Local patches in this repo (HyTE_Stahlberg_):
    - Removed hardcoded 'cuda:0' device selection.
    - Ensured all tensors/models are moved to torch.device("cpu").
-   - Replaced deprecated tokenizer.max_len usage with tokenizer.model_max_length (with a safe fallback).
    - Replaced model/tokenizer loading to avoid import-time CUDA failures (kept same base model: distilbert-base-uncased).
    - Updated get_bert_embedding to use outputs.last_hidden_state directly (no torch.stack on non-tensor outputs).
    - Replaced deprecated aliases (np.float/np.int/np.bool/np.object) with supported dtypes (e.g., np.float64).
