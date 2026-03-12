@@ -18,39 +18,64 @@ Notes:
 - For exact dependency versions used in experiments, see this repo’s environment/requirements files.
 
 Vendored/edited by: Philipp Stahlberg
-Date: 08.03.2026
+Date: 12.03.2026
 """
 from __future__ import absolute_import, division, print_function
-# 
+
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
+import logging
 import numpy as np
 import torch
 import string
-from pyemd import emd, emd_with_flow
-from torch import nn
+
+from pyemd import emd_with_flow
 from math import log
-from itertools import chain
-
 from collections import defaultdict, Counter
-from multiprocessing import Pool
-from functools import partial
 
+from transformers import DistilBertConfig, DistilBertTokenizer, DistilBertModel
+from transformers.utils import logging as hf_logging
 
-from transformers import *
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+logging.getLogger("transformers").setLevel(logging.ERROR)
+hf_logging.set_verbosity_error()
 
-model_name = 'distilbert-base-uncased'
+PUNCT_SET = set(string.punctuation)
 
+model_name = "distilbert-base-uncased"
 device = torch.device("cpu")
 
-config = DistilBertConfig.from_pretrained(model_name, output_hidden_states=True, output_attentions=True)
-tokenizer = DistilBertTokenizer.from_pretrained(model_name, do_lower_case=True)
-model = DistilBertModel.from_pretrained(model_name, config=config)
-model.eval()
-model.to(device) 
+_MODEL = None
+_TOKENIZER = None
+
+
+def get_model_and_tokenizer():
+    global _MODEL, _TOKENIZER
+
+    if _MODEL is None or _TOKENIZER is None:
+        config = DistilBertConfig.from_pretrained(
+            model_name,
+            output_hidden_states=True,
+            output_attentions=True,
+        )
+        _TOKENIZER = DistilBertTokenizer.from_pretrained(
+            model_name,
+            do_lower_case=True,
+        )
+        _MODEL = DistilBertModel.from_pretrained(
+            model_name,
+            config=config,
+        )
+        _MODEL.eval()
+        _MODEL.to(device)
+
+    return _MODEL, _TOKENIZER
                 
 def truncate(tokens):
+    _, tokenizer = get_model_and_tokenizer()
     max_len = getattr(tokenizer, "model_max_length", 512)
     # Set fallback
     if max_len is None or max_len > 100000:
@@ -61,6 +86,7 @@ def truncate(tokens):
     return tokens
 
 def process(a):
+    _, tokenizer = get_model_and_tokenizer()
     a = ["[CLS]"]+truncate(tokenizer.tokenize(a))+["[SEP]"]
     a = tokenizer.convert_tokens_to_ids(a)
     return set(a)
@@ -70,13 +96,11 @@ def get_idf_dict(arr, nthreads=4):
     idf_count = Counter()
     num_docs = len(arr)
 
-    process_partial = partial(process)
+    for item in arr:
+        idf_count.update(process(item))
 
-    with Pool(nthreads) as p:
-        idf_count.update(chain.from_iterable(p.map(process_partial, arr)))
-
-    idf_dict = defaultdict(lambda : log((num_docs+1)/(1)))
-    idf_dict.update({idx:log((num_docs+1)/(c+1)) for (idx, c) in idf_count.items()})
+    idf_dict = defaultdict(lambda: log((num_docs + 1) / 1))
+    idf_dict.update({idx: log((num_docs + 1) / (c + 1)) for (idx, c) in idf_count.items()})
     return idf_dict
 
 def padding(arr, pad_token, dtype=torch.long):
@@ -89,14 +113,6 @@ def padding(arr, pad_token, dtype=torch.long):
         mask[i, :lens[i]] = 1
     return padded, lens, mask
 
-def bert_encode(model, x, attention_mask):
-    model.eval()
-    with torch.no_grad():
-        output, x_encoded_layers, _ = model(input_ids = x, attention_mask = attention_mask)
-    return x_encoded_layers
-
-#with open('stopwords.txt', 'r', encoding='utf-8') as f:
-#    stop_words = set(f.read().strip().split(' '))
          
 def collate_idf(arr, tokenize, numericalize, idf_dict,
                 pad="[PAD]", device=torch.device("cpu")):
@@ -160,6 +176,7 @@ def batched_cdist_l2(x1, x2):
     return res
 
 def word_mover_score(refs, hyps, idf_dict_ref, idf_dict_hyp, stop_words=[], n_gram=1, remove_subwords = True, batch_size=256, device=torch.device("cpu")):
+    model, tokenizer = get_model_and_tokenizer()
     preds = []
     for batch_start in range(0, len(refs), batch_size):
         batch_refs = refs[batch_start:batch_start+batch_size]
@@ -217,6 +234,7 @@ import matplotlib.pyplot as plt
 
 def plot_example(is_flow, reference, translation, device=torch.device("cpu")):
     
+    model, tokenizer = get_model_and_tokenizer()
     idf_dict_ref = defaultdict(lambda: 1.) 
     idf_dict_hyp = defaultdict(lambda: 1.)
     
@@ -225,8 +243,6 @@ def plot_example(is_flow, reference, translation, device=torch.device("cpu")):
     hyp_embedding, hyp_lens, hyp_masks, hyp_idf, hyp_tokens = get_bert_embedding([translation], model, tokenizer, idf_dict_hyp,
                                        device=device)
    
-    ref_embedding = ref_embedding[-1]
-    hyp_embedding = hyp_embedding[-1]
                
     raw = torch.cat([ref_embedding, hyp_embedding], 1)            
     raw.div_(torch.norm(raw, dim=-1).unsqueeze(-1) + 1e-30) 
