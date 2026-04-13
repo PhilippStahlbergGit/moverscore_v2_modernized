@@ -92,7 +92,7 @@ def process(a):
     return set(a)
 
 
-def get_idf_dict(arr, nthreads=4):
+def get_idf_dict(arr):
     idf_count = Counter()
     num_docs = len(arr)
 
