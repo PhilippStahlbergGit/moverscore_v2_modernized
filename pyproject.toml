@@ -1,0 +1,21 @@
+[project]
+name = "moverscore-v2-modernized"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "phalberg", email = "phsta5828@uib.no" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pyemd>=2.0.0",
+    "pytorch-transformers>=1.2.0",
+    "torch>=2.13.0",
+]
+
+[project.scripts]
+moverscore-v2-modernized = "moverscore_v2_modernized:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
